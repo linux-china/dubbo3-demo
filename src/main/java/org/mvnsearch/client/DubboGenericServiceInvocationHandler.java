@@ -1,14 +1,12 @@
 package org.mvnsearch.client;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import org.apache.dubbo.config.ReferenceConfig;
 import org.apache.dubbo.rpc.RpcContext;
 import org.apache.dubbo.rpc.service.GenericService;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +17,7 @@ public class DubboGenericServiceInvocationHandler implements InvocationHandler {
     private final String baseUrl;
     private final String serviceName;
     private final Map<Method, String[]> dubboMethodParamsTypes = new HashMap<>();
+    private final Map<Method, ReferenceConfig<GenericService>> referenceConfigStore = new HashMap<>();
 
     public DubboGenericServiceInvocationHandler(String baseUrl, String serviceName) {
         if (baseUrl.endsWith("/")) {
@@ -31,30 +30,34 @@ public class DubboGenericServiceInvocationHandler implements InvocationHandler {
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        ReferenceConfig<GenericService> reference = new ReferenceConfig<>();
         String methodName = method.getName();
         String[] paramsTypes = getDubboMethodParamsTypes(method);
-        try {
-            RpcContext.getContext().setAttachment("generic", "gson");
-            String dubboServiceUrl = baseUrl + serviceName + "?method=" + methodName + "(" + String.join(",", paramsTypes) + ")";
-            reference.setUrl(dubboServiceUrl);
-            reference.setInterface(serviceName);
-            reference.setGeneric("gson");
-            reference.setCheck(false);
-            final Object result = reference.get().$invoke(methodName, paramsTypes, convertArgsToJson(args));
-            // simple converter, please use carefully
-            if (result != null) {
-                if (result instanceof Map) {
-                    return gson.fromJson(gson.toJsonTree(result, Map.class), method.getReturnType());
-                } else if (result instanceof List) {
-                    Type collectionType = TypeToken.getParameterized(method.getGenericReturnType()).getType();
-                    return gson.fromJson(gson.toJsonTree(result, List.class), collectionType);
-                }
+        RpcContext.getClientAttachment().setAttachment("generic", "gson");
+        ReferenceConfig<GenericService> reference = getReferenceConfig(method, paramsTypes);
+        final Object result = reference.get().$invoke(methodName, paramsTypes, convertArgsToJson(args));
+        // simple converter, please use carefully
+        if (result != null) {
+            if (result instanceof Map) {
+                return gson.fromJson(gson.toJsonTree(result, Map.class), method.getReturnType());
+            } else if (result instanceof List) {
+                return gson.fromJson(gson.toJsonTree(result, List.class), method.getGenericReturnType());
             }
-            return result;
-        } finally {
-            reference.destroy();
         }
+        return result;
+    }
+
+    private ReferenceConfig<GenericService> getReferenceConfig(Method method, String[] paramsTypes) {
+        if (referenceConfigStore.containsKey(method)) {
+            return referenceConfigStore.get(method);
+        }
+        ReferenceConfig<GenericService> reference = new ReferenceConfig<>();
+        String dubboServiceUrl = baseUrl + serviceName + "?method=" + method.getName() + "(" + String.join(",", paramsTypes) + ")";
+        reference.setUrl(dubboServiceUrl);
+        reference.setInterface(serviceName);
+        reference.setGeneric("gson");
+        reference.setCheck(false);
+        referenceConfigStore.put(method, reference);
+        return reference;
     }
 
     public String[] convertArgsToJson(Object[] args) {
