@@ -1,0 +1,20 @@
+#!/usr/bin/env httpx --httpfile
+
+### Dubbbo request to find email by nick
+//@name findEmailByNick
+DUBBO 127.0.0.1:20880/org.mvnsearch.UserService/findEmailByNick(java.lang.String)
+Content-Type: application/json
+
+"linux_china"
+
+### Dubbbo request to top10
+//@name top10
+DUBBO 127.0.0.1:20880/org.mvnsearch.UserService/top10()
+Content-Type: application/json
+
+### Dubbbo request to find account by id
+//@name findAccountById
+DUBBO 127.0.0.1:20880/org.mvnsearch.AccountService/findById(java.lang.Integer)
+Content-Type: application/json
+
+1
